@@ -1,0 +1,141 @@
+https://www.elastic.co/guide/cn/elasticsearch/guide/current/intro.html
+
+
+１．Elaticsearch是一个实时的分布式搜索分析引擎。
+
+２．Elaticsearch是一个开源的搜索引擎，建立在Apache Lucene（全文搜索引擎库）之上。
+
+３．为什么不直接使用Apache Lucene？
+	因为Lucene非常复杂，要和java做集成需要很大的知识背景。
+
+４．Elaticsearch使用java编写，内部使用Lucene做索引和搜索，隐藏Lucene复杂性，提供简单restful api
+
+５．java api：在代码中你可以使用 Elasticsearch 内置的两个客户端：
+	节点客户端（node client）:作为非数据节点加入本地集群，不保存任何数据，但是它知道数据在哪，并且可以把请求转发到正确的节点
+
+	传输客户端（Transport client）:不加入集群，但是可以吧请求转发到集群的一个节点上
+
+６．存储数据到Elasticsearch的行为叫　索引，索引可以包含多个类型
+	索引（名词）：类似传统关系数据库的一个数据库，是一个存储关系型文档的地方
+	索引（动词）：索引一个文档，就是存储一个文档到一个索引（名词）中。
+	倒排索引：用于提升数据检索速度，类似关系型数据库加索引
+	默认：一个文档的每一个属性都是被索引的（有一个倒排索引）
+
+７．轻量搜索指令：
+	查询所有：GET /megacorp/employee/_search
+	带参数查询：GET /megacorp/employee/_search?q=last_name:Smith
+
+８．使用查询表达式搜索
+	GET /megacorp/employee/_search
+	{
+	    "query" : {
+		"match" : {
+		    "last_name" : "Smith"
+		}
+	    }
+	}
+
+９．更复杂的搜索，使用过滤器
+	GET /megacorp/employee/_search
+	{
+	    "query" : {
+		"bool": {
+		    "must": {
+		        "match" : {
+		            "last_name" : "smith" 
+		        }
+		    },
+		    "filter": {
+		        "range" : {
+		            "age" : { "gt" : 30 } 
+		        }
+		    }
+		}
+	    }
+	}
+
+１０．ElasticSearch会按照相关性得分排序，从高到低，第一个是最匹配的。
+	引入相关性概念：并不是全部匹配，而是按照词汇匹配，可以仅仅匹配部分，但是必须是完整单词
+
+１１．短语搜索：使用match_phrase
+	GET /megacorp/employee/_search
+	{
+	    "query" : {
+		"match_phrase" : {
+		    "about" : "rock climbing"
+		}
+	    }
+	}
+１２．高亮搜索
+	GET /megacorp/employee/_search
+	{
+	    "query" : {
+		"match_phrase" : {
+		    "about" : "rock climbing"
+		}
+	    },
+	    "highlight": {
+		"fields" : {
+		    "about" : {}
+		}
+	    }
+	}
+
+１３．分析，ElasticSearch有一个功能叫聚合，aggregations，允许我们基于数据生成一些惊喜的分析结果。聚合与sql中的group by类似，但是更加强大。
+
+１４．文档的元数据
+	_index 索引（文档在哪存放）
+	_type　类型（文档是什么类型），允许索引下进行逻辑分区，因此需要type
+	_id　id唯一，是一个字符串，使用这三个可以唯一的确定一个文档
+
+１５．创建索引文档：使用自定义id或自动id
+	自定义：put /{index}/{type}/{id}
+	自动：put /{index}/{type}   自动id是url-safe，由可修改的flakeId模式生成,基于base64编码且长度为２０字符串
+
+１６．取回一个文档
+	get /website/blog/{id}?pretty
+	
+	包含文档元数据：_index,_type,_id,_version,还有_source:创建文档时的原始json
+	pretty让打印出的响应更加可读
+
+１７．取回文档的一部分		
+	get /website/blog/{id}?_source={field1},{field2}
+	如果你只想要_source字段，不需要任何元数据，你可以使用_source端点
+	get /website/blog/{id}/_source
+
+１８．检查文档是否存在
+	只检查是否存在，使用HEAD代替GET,返回200代表存在，404不存在
+
+１９．更新整个文档
+	更新现有文档只需要put　不过需要指定id，在响应中，_version会增加１，_created会变成false
+	在内部，ElaticSearch将旧的删除，但是不是立即删除，会在后台清理这些删除数据。
+
+２０．创建新文档
+	如何保证我是创建新的文档而不是覆盖旧的文档？
+	1.使用自动id,保证了id不重复
+	2.指定操作类型
+		PUT /website/blog/123?op_type=create
+		PUT /website/blog/123/_create
+
+
+２１.删除文档
+	DELETE /website/blog/123
+	成功删除响应中会把_version＋１
+	未找到，响应404，但是_version依然＋１
+	删除文档只是把状态改为已删除，随着数据量的增大，会在后台清理已删除的文档
+
+２２．乐观并发控制
+	内部version:
+		PUT /website/blog/1?version=1 
+		通过指定version的方式来控制，当version不相等时，报冲突错
+	外部verison:
+		PUT /website/blog/2?version=5&version_type=external
+		每次的version必须大于上次的version，否则报冲突错
+
+２３．更新部分文档
+	POST /{index}/{type}/{id}/_update
+	{
+	   "doc" : {
+	      "field":value
+	   }
+	}
