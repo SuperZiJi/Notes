@@ -1,0 +1,17 @@
+启动应用：
+nohup java -jar -Xms2g -Xmx2g user-management-1.0.1.jar >> /dev/null&
+
+上传文件
+scp [file] [username]@[ip]:~/
+
+scp [file] supplier@supplier-dev.chinanorth.cloudapp.chinacloudapi.cn:~/
+
+scp [file] docker@40.125.213.189:~/
+
+当前路径
+pwd
+
+跳板机
+rdesktop -f -a 16 52.80.128.184
+
+
