@@ -1,0 +1,137 @@
+1.相关度评分背后的理论
+	ec使用布尔模型查找匹配文档，并用一个名为practical scoring function（实用评分函数）的公式来计算相关度。
+	这个公式借鉴了：词频/逆向文档频率、向量空间模型、协调因子、字段长度归一化、词或查询语句
+	
+2.重要概念：
+	1.布尔模型（Boolean Model）：在查询中使用AND、OR和NOT这样的条件来查找匹配的文档
+		例如查询：full and (test or lucene)  匹配包含full并且包含test或lucene的文档
+	2.词频/逆向文档频率（TF/IDF）
+		匹配的时候，有些词比其它词更重要，文档的相关度评分，取决于每个查询词在文档中的权重
+		影响词的权重有三个因素：
+			因素一：词频，词的频率，五次出现比一次出现更匹配，可以使用index_options：docs来禁用词频，
+				精确查询的not_analyzed字符串字段会默认使用这个设置。
+			因素二：逆向文档频率，词的集合在所有文档里出现的频率是多少，频次越高，权重越低。例如and对
+				于相关度贡献很少，但是出现频率很高。
+			因素三：字段长度归一值：字段越短，字段的权重越高。例如，词出现在name比它出现在detail这样的
+				字段，相关度更高。.
+		结合使用：三个因素是在索引时计算并存储的，最后他们将结合在一起计算单个词在特定文档的权重。
+	3.向量空间模型（vector space model）：一种合并多词权重的方式。
+		因为查询通常不止一个词，所以需要合并多词权重。
+		使用向量的比较，角度差。
+
+3.lucene的实用评分函数
+	一个多词查询
+		GET /my_index/doc/_search
+		{
+		  "query": {
+		    "match": {
+		      "text": "quick fox"
+		    }
+		  }
+		}
+	会在内部被重写为：
+	GET /my_index/doc/_search
+		{
+		  "query": {
+		    "bool": {
+		      "should": [
+			{"term": { "text": "quick" }},
+			{"term": { "text": "fox"   }}
+		      ]
+		    }
+		  }
+		}
+	bool实现了布尔模型，在这个例子中，它会将包括词quick和fox或两者皆有的文档作为查询结果
+	查询归一因子：将查询归一化
+	查询协调：协调因子可以为那些查询词包含度高的文档提供奖励
+		协调因子将评分和匹配词的数量相乘，然后除以查询中所有词的数量
+		例如 fox quick brown词的权重都是1.5
+		有fox  1.5
+		有fox quick 3*2/3 = 2
+		有fox quick brown 4.5*3/3 = 4.5
+	bool查询默认对所有的should语句使用协调功能
+	索引时字段层权重提升：不建议建立索引时对字段进行提升权重
+		事实上，权重的提升会被应用到字段的每个词，而不是字段本身
+4.查询时权重提升
+	1.查询时提升权重，是可以用来影响相关度的主要工具，任意类型的查询都能够接受boost参数。
+	例如：{
+		  "match": {
+		    "title": {
+		      "query": "quick brown fox",
+		      "boost": 2 
+		    }
+		  }
+		}
+	2.提升索引权重，如果在多个索引中搜索，可以使用indices_boost来提升整个索引的权重
+	3.使用查询结构修改相关度：在should中嵌套bool
+		GET /_search
+		{
+		  "query": {
+		    "bool": {
+		      "should": [
+			{ "term": { "text": "quick" }},
+			{ "term": { "text": "fox"   }},
+			{
+			  "bool": {
+			    "should": [
+			      { "term": { "text": "brown" }},
+			      { "term": { "text": "red"   }}
+			    ]
+			  }
+			}
+		      ]
+		    }
+		  }
+		}
+	4.权重提升查询：场景 查询Apple并且过滤到fruit tree等植物相关的文档，查询苹果公司
+		GET /_search
+			{
+			  "query": {
+			    "bool": {
+			      "must": {
+				"match": {
+				  "text": "apple"
+				}
+			      },
+			      "must_not": {
+				"match": {
+				  "text": "pie tart fruit crumble tree"
+				}
+			      }
+			    }
+			  }
+			}
+	这时候用must_not太过严格，很可能导致我们失去一些关于苹果公司的文档
+	可以使用boosting查询，权重提升查询，fruit，tree依然包含在结果中，但是让他们降级，排名下降。
+		{
+		  "query": {
+		    "boosting": {
+		      "positive": {
+			"match": {
+			  "text": "apple"
+			}
+		      },
+		      "negative": {
+			"match": {
+			  "text": "pie tart fruit crumble tree"
+			}
+		      },
+		      "negative_boost": 0.5
+		    }
+		  }
+		}
+	negative_boost的值必须小于1.0，在上面这个示例中，所有包含负向词的文档评分减半。
+	5.忽略TF/IDF 不关心出现频率或者关键词是否是一个普通词，使用constant_score
+	constant_score:为任意一个匹配的文档指定评分1，也可以为特定的项增加权重，依然用boost
+	{ "constant_score": {
+          "boost":   2 
+          "query": { "match": { "description": "pool" }}
+        }}
+	6.function_score查询是用来控制评分过程的终极武器，
+		一些预定义函数：
+		weight:当weight=2时，2*_score
+		field_value_factor:修改score
+		random_score:对于每个用户都使用一个不同的随机评分对结果排序，但是对于一个具体用户来说，顺序始终一
+				致
+		衰减函数：linear、exp、gauss
+		script_score:自定义脚本

@@ -1,0 +1,29 @@
+{
+  "query":{
+	"function_score": {
+	    "query":{"match":{"goodsName":"足球"}},
+	    "functions":[
+	    	{
+	    		"script_score": {
+	    			"script": {"source":"doc['saleNum'].value;"}
+	    		}
+	    	},
+	    	{
+	    		"script_score": {
+	    			"script": {"source":"doc['price'].value;"}
+	    		}
+	    	}
+	    ],
+	    "score_mode": "sum",
+	    "boost_mode":"sum"
+    }
+  }
+  ,"sort":{"sid":{"order":"desc"}}
+}
+
+
+
+
+
+
+

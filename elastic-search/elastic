@@ -386,3 +386,7 @@ https://www.elastic.co/guide/cn/elasticsearch/guide/current/intro.html
 	2.评分的计算方式取决于查询类型：
 		fuzzy：计算关键词的拼写相似程度
 		terms：计算找到的内容域关键词组组成部分匹配的百分比
+
+37.结构化搜索
+	1.精确值查找：使用精确值查找，我们会使用过滤器filters，不计算相关度，而且很容易被缓存。
+	
